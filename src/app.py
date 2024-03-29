@@ -58,12 +58,12 @@ categories_map = {
 }
 
 
-def sample(email, topic, physics_topic, categories, interest):
+def sample(topic, physics_topic, categories, interest):
     if not topic:
-        raise gr.Error("You must choose a topic.")
+        raise gr.Error("您必须选择一个主题。")
     if topic == "Physics":
         if isinstance(physics_topic, list):
-            raise gr.Error("You must choose a physics topic.")
+            raise gr.Error("您必须选择一个物理学主题。")
         topic = physics_topic
         abbr = physics_topics[topic]
     else:
@@ -72,16 +72,15 @@ def sample(email, topic, physics_topic, categories, interest):
         papers = get_papers(abbr)
         papers = [
             t for t in papers
-            if bool(set(process_subject_fields(t['subjects'])) & set(categories))][:4]
+            if bool(set(process_subject_fields(t['subjects'])) & set(categories))][:8]
     else:
-        papers = get_papers(abbr, limit=4)
+        papers = get_papers(abbr, limit=8)
     if interest:
-        if not openai.api_key: raise gr.Error("Set your OpenAI api key on the left first")
         relevancy, _ = generate_relevance_score(
             papers,
             query={"interest": interest},
             threshold_score=0,
-            num_paper_in_prompt=4)
+            num_paper_in_prompt=8)
         return "\n\n".join([paper["summarized_text"] for paper in relevancy])
     else:
         return "\n\n".join(f"Title: {paper['title']}\nAuthors: {paper['authors']}" for paper in papers)
@@ -149,47 +148,29 @@ def test(email, topic, physics_topic, categories, interest, key):
         return "Failure: ({response.status_code})"
 
 
-def register_openai_token(token):
-    openai.api_key = token
+openai.api_key = 'sk-xxxxxxxxxxxxxx'
 
 with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column(scale=1):
-            token = gr.Textbox(label="OpenAI API Key", type="password")
             subject = gr.Radio(
-                list(topics.keys()), label="Topic"
+                list(topics.keys()), label="主题"
             )
-            physics_subject = gr.Dropdown(physics_topics, value=[], multiselect=False, label="Physics category", visible=False, info="")
+            physics_subject = gr.Dropdown(physics_topics, value=[], multiselect=False, label="物理类别", visible=False, info="")
             subsubject = gr.Dropdown(
-                    [], value=[], multiselect=True, label="Subtopic", info="Optional. Leaving it empty will use all subtopics.", visible=False)
+                    [], value=[], multiselect=True, label="子主题", info="可选的。留空将使用所有子主题。", visible=False)
             subject.change(fn=change_physics, inputs=[subject], outputs=physics_subject)
             subject.change(fn=change_subsubject, inputs=[subject, physics_subject], outputs=subsubject)
             physics_subject.change(fn=change_subsubject, inputs=[subject, physics_subject], outputs=subsubject)
 
-            interest = gr.Textbox(label="A natural language description of what you are interested in. We will generate relevancy scores (1-10) and explanations for the papers in the selected topics according to this statement.", info="Press shift-enter or click the button below to update.", lines=7)
-            sample_btn = gr.Button("Generate Digest")
-            sample_output = gr.Textbox(label="Results for your configuration.", info="For runtime purposes, this is only done on a small subset of recent papers in the topic you have selected. Papers will not be filtered by relevancy, only sorted on a scale of 1-10.")
-        with gr.Column(scale=0.40):
-            with gr.Box():
-                title = gr.Markdown(
-                    """
-                    # Email Setup, Optional
-                    Send an email to the below address using the configuration on the right. Requires a sendgrid token. These values are not needed to use the right side of this page.
+            interest = gr.Textbox(label="您感兴趣的内容的自然语言描述。我们将根据此描述生成所选主题中论文的相关性评分（1-10）和解释。", info="按住 Shift+Enter 或点击下方按钮以更新。", lines=7)
+            sample_btn = gr.Button("生成结果")
+            sample_output = gr.Textbox(label="对于您的配置的结果。", info="出于运行时间的目的，这只针对您选择的主题中最近论文的一个小子集进行。论文不会按相关性过滤，只会按1-10的比例排序。")
 
-                    To create a scheduled job for this, see our [Github Repository](https://github.com/AutoLLM/ArxivDigest)
-                    """,
-                    interactive=False, show_label=False)
-                email = gr.Textbox(label="Email address", type="email", placeholder="")
-                sendgrid_token = gr.Textbox(label="SendGrid API Key", type="password")
-                with gr.Row():
-                    test_btn = gr.Button("Send email")
-                    output = gr.Textbox(show_label=False, placeholder="email status")
-    test_btn.click(fn=test, inputs=[email, subject, physics_subject, subsubject, interest, sendgrid_token], outputs=output)
-    token.change(fn=register_openai_token, inputs=[token])
-    sample_btn.click(fn=sample, inputs=[email, subject, physics_subject, subsubject, interest], outputs=sample_output)
-    subject.change(fn=sample, inputs=[email, subject, physics_subject, subsubject, interest], outputs=sample_output)
-    physics_subject.change(fn=sample, inputs=[email, subject, physics_subject, subsubject, interest], outputs=sample_output)
-    subsubject.change(fn=sample, inputs=[email, subject, physics_subject, subsubject, interest], outputs=sample_output)
-    interest.submit(fn=sample, inputs=[email, subject, physics_subject, subsubject, interest], outputs=sample_output)
+    sample_btn.click(fn=sample, inputs=[subject, physics_subject, subsubject, interest], outputs=sample_output)
+    subject.change(fn=sample, inputs=[subject, physics_subject, subsubject, interest], outputs=sample_output)
+    physics_subject.change(fn=sample, inputs=[subject, physics_subject, subsubject, interest], outputs=sample_output)
+    subsubject.change(fn=sample, inputs=[subject, physics_subject, subsubject, interest], outputs=sample_output)
+    interest.submit(fn=sample, inputs=[subject, physics_subject, subsubject, interest], outputs=sample_output)
 
-demo.launch(show_api=False)
+demo.launch(show_api=False,server_name="0.0.0.0",server_port=31112)
